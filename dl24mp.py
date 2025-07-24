@@ -20,41 +20,26 @@ def calc_checksum(data: bytes) -> int:
     return chk
 
 
-def build_command(payload: bytes) -> bytes:
-    if len(payload) != 11:
-        raise ValueError("Payload must be exactly 11 bytes")
-    header = bytes([0xFF, 0x55])
-    length_byte = bytes([0x11])
-    cmd = header + length_byte + payload
+def build_command(cmd_name: str) -> bytes:
+    if cmd_name not in COMMANDS:
+        print(f"Unknown command '{cmd_name}'")
+        sys.exit(1)
+    header = bytes([0xFF, 0x55, 0x11, 0x11])
+    footer = bytes([0x00] * 10)
+    cmd = header + COMMANDS[cmd_name] + footer
     checksum = calc_checksum(cmd)
     return cmd + bytes([checksum])
 
 
 COMMANDS = {
-    "reset_wh": bytes(
-        [0x11, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    ),
-    "reset_ah": bytes(
-        [0x11, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    ),
-    "reset_time": bytes(
-        [0x11, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    ),
-    "reset_all": bytes(
-        [0x11, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    ),
-    "cmd_mode": bytes(
-        [0x11, 0x31, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    ),
-    "cmd_onoff": bytes(
-        [0x11, 0x32, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    ),
-    "cmd_plus": bytes(
-        [0x11, 0x33, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    ),
-    "cmd_minus": bytes(
-        [0x11, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    ),
+    "reset_wh": bytes([0x01]),
+    "reset_ah": bytes([0x02]),
+    "reset_time": bytes([0x03]),
+    "reset_all": bytes([0x05]),
+    "cmd_mode": bytes([0x31]),
+    "cmd_onoff": bytes([0x32]),
+    "cmd_plus": bytes([0x33]),
+    "cmd_minus": bytes([0x34]),
 }
 
 
@@ -67,7 +52,6 @@ def rfcomm_bind(addr, channel=1, dev=RFCOMM_DEVICE):
 
 
 def parse_packet(data: bytes):
-    print(data)
     if len(data) != 36 or data[0] != 0xFF or data[1] != 0x55:
         print("Invalid header")
         return None
@@ -79,10 +63,10 @@ def parse_packet(data: bytes):
         current = int.from_bytes(payload[4:7], "big") / 1000.0
         power = voltage * current
         charge = int.from_bytes(payload[7:10], "big") / 100.0
-        energy = int.from_bytes(payload[10:14], "big") * 10.0
+        energy = int.from_bytes(payload[10:14], "big") * 10
         temp = int.from_bytes(payload[21:23], "big")
 
-        print(f"{voltage:.3f}V,{current:.3f}A,{charge:.3f}Ah,{energy:.3f}Wh,{temp}degC")
+        print(f"{voltage:.1f}V,{current:.3f}A,{charge:.2f}Ah,{energy}Wh,{temp}degC")
     except Exception as e:
         print(f"Error parsing payload: {e}")
 
@@ -107,7 +91,6 @@ def read_loop():
             chunk = ser.read(36)
             if not chunk:
                 continue
-            print(f"Received: {len(chunk)} : {chunk.hex()}")
 
             buffer.extend(chunk)
 
@@ -161,17 +144,13 @@ def main():
     reader_thread.start()
 
     if cmd_name:
-        if cmd_name not in COMMANDS:
-            print(f"Unknown command '{cmd_name}'")
-            sys.exit(1)
-        payload = COMMANDS[cmd_name]
-        cmd_bytes = build_command(payload)
+        cmd_bytes = build_command(cmd_name)
         send_command(cmd_bytes)
     else:
         print("No command specified. Just read data... (press Ctrl+C to exit)")
 
     while running:
-        time.sleep(0.5)
+        time.sleep(5)
 
 
 if __name__ == "__main__":
